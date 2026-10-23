@@ -1,68 +1,94 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, BookOpen, Settings, Bell, Search, Menu, Plus, Calendar, BarChart2, UserCircle, X, AlertTriangle, CheckCircle, FileText, Printer, Copy, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, BookOpen, Settings, Bell, Search, Menu, Plus, Calendar, BarChart2, UserCircle, X, AlertTriangle, CheckCircle, FileText, Printer, Copy, RefreshCw, Database, Trash2 } from 'lucide-react';
 import SocioForm from './components/SocioForm';
 import Agenda from './components/Agenda';
 import Cursos from './components/Cursos';
 import Profissionais from './components/Profissionais';
 import Relatorios from './components/Relatorios';
-import sociosData from './socios.json';
+import DatabaseStatusModal from './components/DatabaseStatusModal';
+import { sociosService, financeiroService, checkDatabaseStatus } from './lib/supabase';
+import initialSocios from './socios.json';
 import './index.css';
 
 // Componentes das páginas
-const Dashboard = () => (
-  <div className="page-content">
-    <h2>Visão Geral</h2>
-    <p className="subtitle">Bem-vindo ao Sistema Associação Boas Novas</p>
-    
-    <div className="dashboard-grid">
-      <div className="glass-card stat-card">
-        <div className="stat-icon"><Users size={24} /></div>
-        <div className="stat-info">
-          <h3>Total de Sócios</h3>
-          <p>{sociosData.length}</p>
+const Dashboard = () => {
+  const [totalSocios, setTotalSocios] = useState(initialSocios.length);
+
+  useEffect(() => {
+    sociosService.getAll().then(data => {
+      if (data && data.length > 0) setTotalSocios(data.length);
+    });
+  }, []);
+
+  return (
+    <div className="page-content">
+      <h2>Visão Geral</h2>
+      <p className="subtitle">Bem-vindo ao Sistema Associação Boas Novas</p>
+      
+      <div className="dashboard-grid">
+        <div className="glass-card stat-card">
+          <div className="stat-icon"><Users size={24} /></div>
+          <div className="stat-info">
+            <h3>Total de Sócios</h3>
+            <p>{totalSocios}</p>
+          </div>
         </div>
-      </div>
-      <div className="glass-card stat-card">
-        <div className="stat-icon"><CreditCard size={24} /></div>
-        <div className="stat-info">
-          <h3>Faturamento (Exemplo)</h3>
-          <p>R$ 15.430,00</p>
+        <div className="glass-card stat-card">
+          <div className="stat-icon"><CreditCard size={24} /></div>
+          <div className="stat-info">
+            <h3>Faturamento (Exemplo)</h3>
+            <p>R$ 15.430,00</p>
+          </div>
         </div>
-      </div>
-      <div className="glass-card stat-card">
-        <div className="stat-icon"><BookOpen size={24} /></div>
-        <div className="stat-info">
-          <h3>Atividades Ativas</h3>
-          <p>12</p>
+        <div className="glass-card stat-card">
+          <div className="stat-icon"><BookOpen size={24} /></div>
+          <div className="stat-info">
+            <h3>Atividades Ativas</h3>
+            <p>12</p>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const Cadastros = () => {
-  const [socios, setSocios] = useState([]);
+  const [socios, setSocios] = useState(initialSocios);
   const [pesquisa, setPesquisa] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [socioEmEdicao, setSocioEmEdicao] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setSocios(sociosData);
+    setLoading(true);
+    sociosService.getAll().then(data => {
+      if (data && data.length > 0) setSocios(data);
+      setLoading(false);
+    });
   }, []);
 
   const sociosFiltrados = socios.filter(s => 
     (s.nNome || '').toLowerCase().includes(pesquisa.toLowerCase())
   );
 
-  const handleSaveSocio = (socioSalvo) => {
+  const handleSaveSocio = async (socioSalvo) => {
+    const salvo = await sociosService.save(socioSalvo);
     if (socioEmEdicao) {
-      setSocios(socios.map(s => s['Código'] === socioSalvo['Código'] ? socioSalvo : s));
+      setSocios(socios.map(s => s['Código'] === salvo['Código'] ? salvo : s));
     } else {
-      setSocios([socioSalvo, ...socios]);
+      setSocios([salvo, ...socios]);
     }
     setSocioEmEdicao(null);
     setIsFormOpen(false);
+  };
+
+  const handleDeleteSocio = async (codigo, e) => {
+    e.stopPropagation();
+    if (window.confirm('Tem certeza que deseja excluir este sócio?')) {
+      await sociosService.delete(codigo);
+      setSocios(socios.filter(s => s['Código'] !== codigo));
+    }
   };
 
   return (
@@ -147,19 +173,38 @@ const Cadastros = () => {
                   <td style={{ padding: '16px', color: 'var(--text-secondary)' }}>{socio.Telefones || socio.Celular || '-'}</td>
                   <td style={{ padding: '16px', color: 'var(--text-secondary)' }}>{socio.CPF || '-'}</td>
                   <td style={{ padding: '16px' }}>
-                    <button 
-                      onClick={() => { setSocioEmEdicao(socio); setIsFormOpen(true); }}
-                      style={{ 
-                      background: 'var(--accent-glow)', 
-                      color: 'var(--accent-primary)',
-                      border: 'none',
-                      padding: '6px 12px',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontWeight: 500
-                    }}>
-                      Editar
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        onClick={() => { setSocioEmEdicao(socio); setIsFormOpen(true); }}
+                        style={{ 
+                          background: 'var(--accent-glow)', 
+                          color: 'var(--accent-primary)',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: 500
+                        }}
+                      >
+                        Editar
+                      </button>
+                      <button 
+                        onClick={(e) => handleDeleteSocio(socio['Código'], e)}
+                        title="Excluir sócio"
+                        style={{ 
+                          background: 'rgba(239, 68, 68, 0.1)', 
+                          color: '#f87171',
+                          border: 'none',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -236,11 +281,11 @@ const getDefaultNovoVencimento = () => {
   return d.toISOString().split('T')[0];
 };
 
-const SOCIOS_COM_NOME = sociosData.filter(s => s.nNome && s.nNome.trim().length > 2);
+const SOCIOS_COM_NOME = initialSocios.filter(s => s.nNome && s.nNome.trim().length > 2);
 
 const getSocioDaFatura = (fatura) => {
   if (!fatura) return null;
-  const exato = sociosData.find(s => s['Código'] === fatura.NumFatura && s.nNome && s.nNome.trim().length > 2);
+  const exato = initialSocios.find(s => s['Código'] === fatura.NumFatura && s.nNome && s.nNome.trim().length > 2);
   if (exato) return exato;
   if (SOCIOS_COM_NOME.length > 0) {
     const idx = Math.abs(Number(fatura.NumFatura) || 0) % SOCIOS_COM_NOME.length;
@@ -260,9 +305,10 @@ const Financeiro = () => {
   const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
-    // Carregar dinamicamente para não quebrar caso o arquivo não exista no primeiro load
-    import('./financeiro.json').then(module => {
-      setFaturas(module.default || module);
+    financeiroService.getAll().then(data => {
+      if (data && data.length > 0) {
+        setFaturas(data);
+      }
     }).catch(err => console.error("Erro ao carregar financeiro", err));
   }, []);
 
@@ -312,12 +358,15 @@ const Financeiro = () => {
     const ordensIds = faturasParaBoleto.map(f => f.NumOrdem);
     const parcelasNums = faturasParaBoleto.map(f => `${f.Duplicata}ª`);
 
-    // Atualiza a data de vencimento das faturas incluídas no novo boleto
-    const faturasAtualizadas = faturas.map(f =>
-      ordensIds.includes(f.NumOrdem)
-        ? { ...f, dtVencimento: novoDtVencimento, boletoReemitidoEm: new Date().toLocaleDateString('pt-BR') }
-        : f
-    );
+    // Atualiza a data de vencimento das faturas incluídas no novo boleto e persiste no banco
+    const faturasAtualizadas = faturas.map(f => {
+      if (ordensIds.includes(f.NumOrdem)) {
+        const itemAtualizado = { ...f, dtVencimento: novoDtVencimento, boletoReemitidoEm: new Date().toLocaleDateString('pt-BR') };
+        financeiroService.save(itemAtualizado);
+        return itemAtualizado;
+      }
+      return f;
+    });
     setFaturas(faturasAtualizadas);
 
     const faturaPrincipalAtualizada = faturasAtualizadas.find(f => f.NumOrdem === faturaSelecionada.NumOrdem);
@@ -345,12 +394,16 @@ const Financeiro = () => {
     });
   };
 
-  const handleMarcarPago = (faturaAlvo) => {
+  const handleMarcarPago = async (faturaAlvo) => {
     const agoraMs = Date.now();
     const novoDtPago = `/Date(${agoraMs})/`;
     const idsParaBaixar = ordensSelecionadasBoleto.length > 0
       ? ordensSelecionadasBoleto
       : [faturaAlvo.NumOrdem];
+
+    for (const numOrdem of idsParaBaixar) {
+      await financeiroService.updatePagamento(numOrdem, novoDtPago);
+    }
 
     const atualizadas = faturas.map(f =>
       idsParaBaixar.includes(f.NumOrdem) ? { ...f, dtPago: novoDtPago } : f
@@ -1061,17 +1114,63 @@ const Sidebar = () => {
   );
 };
 
-const Topbar = () => (
-  <header className="topbar">
-    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'var(--text-secondary)' }}>
-      <Menu size={20} style={{ cursor: 'pointer' }} />
-    </div>
-    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-      <Bell size={20} style={{ color: 'var(--text-secondary)', cursor: 'pointer' }} />
-      <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-primary)' }}></div>
-    </div>
-  </header>
-);
+const Topbar = ({ onOpenDbModal }) => {
+  const [dbStatus, setDbStatus] = useState({ loading: true, connected: true, tablesCreated: false });
+
+  useEffect(() => {
+    checkDatabaseStatus().then(res => {
+      setDbStatus({
+        loading: false,
+        connected: res.connected,
+        tablesCreated: res.tablesCreated
+      });
+    });
+  }, []);
+
+  return (
+    <header className="topbar">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'var(--text-secondary)' }}>
+        <Menu size={20} style={{ cursor: 'pointer' }} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Indicador de Status do Supabase */}
+        <button
+          onClick={onOpenDbModal}
+          title="Clique para gerenciar a conexão com o Supabase"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: dbStatus.tablesCreated ? 'rgba(34, 197, 94, 0.15)' : 'rgba(234, 179, 8, 0.15)',
+            border: `1px solid ${dbStatus.tablesCreated ? 'rgba(34, 197, 94, 0.3)' : 'rgba(234, 179, 8, 0.3)'}`,
+            padding: '6px 12px',
+            borderRadius: '20px',
+            cursor: 'pointer',
+            fontSize: '0.8rem',
+            fontWeight: 500,
+            color: dbStatus.tablesCreated ? '#4ade80' : '#facc15',
+            transition: 'all 0.2s'
+          }}
+        >
+          <Database size={14} />
+          <span>{dbStatus.tablesCreated ? 'Supabase: Online' : 'Supabase: Configurar'}</span>
+          <span style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: dbStatus.tablesCreated ? '#4ade80' : '#facc15',
+            boxShadow: `0 0 8px ${dbStatus.tablesCreated ? '#4ade80' : '#facc15'}`
+          }}></span>
+        </button>
+
+        <Bell size={20} style={{ color: 'var(--text-secondary)', cursor: 'pointer' }} />
+        <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '0.9rem' }}>
+          AD
+        </div>
+      </div>
+    </header>
+  );
+};
 
 const Login = ({ onLogin }) => {
   const [senha, setSenha] = useState('');
@@ -1160,6 +1259,7 @@ const Login = ({ onLogin }) => {
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
 
   const handleLogin = (isAdminUser) => {
     setIsAuthenticated(true);
@@ -1175,7 +1275,7 @@ const App = () => {
       <div className="app-container">
         <Sidebar />
         <main className="main-content">
-          <Topbar />
+          <Topbar onOpenDbModal={() => setIsDbModalOpen(true)} />
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/cadastros" element={<Cadastros />} />
@@ -1187,6 +1287,15 @@ const App = () => {
             <Route path="/config" element={<div className="page-content"><h2>Configurações</h2></div>} />
           </Routes>
         </main>
+
+        <DatabaseStatusModal
+          isOpen={isDbModalOpen}
+          onClose={() => setIsDbModalOpen(false)}
+          onDataSynced={() => {
+            // Recarrega a página para atualizar os dados sincronizados
+            window.location.reload();
+          }}
+        />
       </div>
     </Router>
   );

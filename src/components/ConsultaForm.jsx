@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Camera, CheckCircle } from 'lucide-react';
 import '../index.css';
-import sociosData from '../socios.json';
+import { sociosService } from '../lib/supabase';
+import initialSocios from '../socios.json';
 
 // Mocks
 const PROFISSIONAIS_MOCK = [
@@ -18,6 +19,7 @@ const MODALIDADES_MOCK = [
 ];
 
 const ConsultaForm = ({ initialData = null, onClose, onSave }) => {
+  const [sociosList, setSociosList] = useState(initialSocios);
   const [pacientePesquisa, setPacientePesquisa] = useState('');
   const [pacienteSelecionado, setPacienteSelecionado] = useState(initialData?.paciente || null);
   const [profissional, setProfissional] = useState(initialData?.profissional || '');
@@ -30,7 +32,13 @@ const ConsultaForm = ({ initialData = null, onClose, onSave }) => {
   const [status, setStatus] = useState(initialData?.status || 'Agendado');
   const [observacoes, setObservacoes] = useState(initialData?.observacoes || '');
   
-  const pacientesFiltrados = sociosData.filter(s => 
+  useEffect(() => {
+    sociosService.getAll().then(data => {
+      if (data && data.length > 0) setSociosList(data);
+    });
+  }, []);
+
+  const pacientesFiltrados = sociosList.filter(s => 
     (s.nNome || '').toLowerCase().includes(pacientePesquisa.toLowerCase())
   ).slice(0, 5); // Mostra apenas os 5 primeiros
 

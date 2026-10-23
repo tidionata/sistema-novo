@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, UserCircle, Edit2, Trash2 } from 'lucide-react';
+import { profissionaisService } from '../lib/supabase';
 
 const PROFISSIONAIS_MOCK = [
   { id: 1, nome: 'Dr. João Silva', especialidade: 'Clínico Geral', telefone: '(11) 99999-1111', status: 'Ativo' },
@@ -17,6 +18,14 @@ const Profissionais = () => {
 
   const [form, setForm] = useState({ nome: '', especialidade: '', telefone: '', status: 'Ativo' });
 
+  useEffect(() => {
+    profissionaisService.getAll().then(data => {
+      if (data && data.length > 0) {
+        setProfissionais(data);
+      }
+    });
+  }, []);
+
   const handleOpenForm = (profissional = null) => {
     if (profissional) {
       setProfissionalEmEdicao(profissional);
@@ -28,22 +37,25 @@ const Profissionais = () => {
     setIsFormOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.nome || !form.especialidade) {
       alert("Nome e especialidade são obrigatórios.");
       return;
     }
 
+    const salvo = await profissionaisService.save(form);
+
     if (profissionalEmEdicao) {
-      setProfissionais(profissionais.map(p => p.id === form.id ? form : p));
+      setProfissionais(profissionais.map(p => p.id === form.id ? salvo : p));
     } else {
-      setProfissionais([...profissionais, { ...form, id: Date.now() }]);
+      setProfissionais([...profissionais, salvo]);
     }
     setIsFormOpen(false);
   };
 
-  const handleExcluir = (id) => {
+  const handleExcluir = async (id) => {
     if (window.confirm("Deseja realmente excluir este profissional?")) {
+      await profissionaisService.delete(id);
       setProfissionais(profissionais.filter(p => p.id !== id));
     }
   };

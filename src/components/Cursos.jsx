@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, BookOpen, Users, Clock, Calendar, MoreVertical, Edit2, Trash2 } from 'lucide-react';
 import TurmaModal from './TurmaModal';
 import CursoForm from './CursoForm';
+import { cursosService } from '../lib/supabase';
 
 // Dados fictícios de cursos
 const CURSOS_MOCK = [
@@ -86,6 +87,14 @@ const Cursos = () => {
   const [cursos, setCursos] = useState(CURSOS_MOCK);
   const [menuAbertoId, setMenuAbertoId] = useState(null);
 
+  useEffect(() => {
+    cursosService.getAll().then(data => {
+      if (data && data.length > 0) {
+        setCursos(data);
+      }
+    });
+  }, []);
+
   const toggleMenu = (id, e) => {
     e.stopPropagation();
     if (menuAbertoId === id) {
@@ -95,20 +104,26 @@ const Cursos = () => {
     }
   };
 
-  const handleDuplicar = (curso) => {
-    const novoCurso = { ...curso, id: Date.now(), nome: `${curso.nome} (Cópia)`, inscritos: 0 };
-    setCursos([novoCurso, ...cursos]);
+  const handleDuplicar = async (curso) => {
+    const novoCurso = { ...curso, id: undefined, nome: `${curso.nome} (Cópia)`, inscritos: 0 };
+    const salvo = await cursosService.save(novoCurso);
+    setCursos([salvo, ...cursos]);
     setMenuAbertoId(null);
   };
 
-  const handleExcluir = (id) => {
+  const handleExcluir = async (id) => {
     if(window.confirm('Tem certeza que deseja excluir este curso?')) {
+      await cursosService.delete(id);
       setCursos(cursos.filter(c => c.id !== id));
     }
     setMenuAbertoId(null);
   };
 
-  const handleAlterarStatus = (id, novoStatus) => {
+  const handleAlterarStatus = async (id, novoStatus) => {
+    const alvo = cursos.find(c => c.id === id);
+    if (alvo) {
+      await cursosService.save({ ...alvo, status: novoStatus });
+    }
     setCursos(cursos.map(c => c.id === id ? { ...c, status: novoStatus } : c));
     setMenuAbertoId(null);
   };
@@ -323,11 +338,12 @@ const Cursos = () => {
         <CursoForm 
           initialData={cursoEmEdicao}
           onClose={() => setIsFormOpen(false)} 
-          onSave={(cursoSalvo) => {
+          onSave={async (cursoSalvo) => {
+            const salvo = await cursosService.save(cursoSalvo);
             if (cursoEmEdicao) {
-              setCursos(cursos.map(c => c.id === cursoSalvo.id ? cursoSalvo : c));
+              setCursos(cursos.map(c => c.id === cursoSalvo.id ? salvo : c));
             } else {
-              setCursos([cursoSalvo, ...cursos]);
+              setCursos([salvo, ...cursos]);
             }
             setIsFormOpen(false);
           }}

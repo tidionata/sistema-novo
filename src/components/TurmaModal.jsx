@@ -1,21 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Search, User, Trash2 } from 'lucide-react';
-import sociosData from '../socios.json';
+import { sociosService } from '../lib/supabase';
+import initialSocios from '../socios.json';
 
 const TurmaModal = ({ curso, onClose }) => {
+  const [sociosList, setSociosList] = useState(initialSocios);
   const [pesquisa, setPesquisa] = useState('');
+
+  useEffect(() => {
+    sociosService.getAll().then(data => {
+      if (data && data.length > 0) setSociosList(data);
+    });
+  }, []);
   
   // Como não temos a ligação real, vamos mockar alguns alunos pegando nomes aleatórios dos sócios
-  // Para demonstração, pegamos 5 sócios aleatórios como alunos dessa turma
-  const alunosTurma = sociosData.slice(0, curso.inscritos || 5).map(s => ({
+  const alunosTurma = sociosList.slice(0, curso.inscritos || 5).map(s => ({
     id: s['Código'],
     nome: s.nNome,
-    matricula: `2026${s['Código'].toString().padStart(4, '0')}`,
+    matricula: `2026${(s['Código'] || 1).toString().padStart(4, '0')}`,
     dataMatricula: '15/07/2026'
   }));
 
   const alunosFiltrados = alunosTurma.filter(a => 
-    a.nome.toLowerCase().includes(pesquisa.toLowerCase()) || 
+    (a.nome || '').toLowerCase().includes(pesquisa.toLowerCase()) || 
     a.matricula.includes(pesquisa)
   );
 

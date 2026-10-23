@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, Calendar as CalendarIcon, Clock, User, Activity, X, Edit2, Trash2, CheckCircle, XCircle, FileText, CreditCard } from 'lucide-react';
 import ConsultaForm from './ConsultaForm';
+import { consultasService } from '../lib/supabase';
 
 // Dados fictícios de consultas
 const CONSULTAS_MOCK = [
@@ -32,6 +33,14 @@ const Agenda = () => {
   const [consultaEmEdicao, setConsultaEmEdicao] = useState(null);
   const [consultaSelecionada, setConsultaSelecionada] = useState(null);
 
+  useEffect(() => {
+    consultasService.getAll().then(data => {
+      if (data && data.length > 0) {
+        setConsultas(data);
+      }
+    });
+  }, []);
+
   const consultasFiltradas = consultas.filter(c => 
     c.paciente.toLowerCase().includes(pesquisa.toLowerCase()) || 
     c.profissional.toLowerCase().includes(pesquisa.toLowerCase()) ||
@@ -39,7 +48,11 @@ const Agenda = () => {
     c.data.includes(pesquisa)
   );
 
-  const handleAlterarStatus = (id, novoStatus) => {
+  const handleAlterarStatus = async (id, novoStatus) => {
+    const alvo = consultas.find(c => c.id === id);
+    if (alvo) {
+      await consultasService.save({ ...alvo, status: novoStatus });
+    }
     const atualizadas = consultas.map(c => c.id === id ? { ...c, status: novoStatus } : c);
     setConsultas(atualizadas);
     if (consultaSelecionada && consultaSelecionada.id === id) {
@@ -47,8 +60,9 @@ const Agenda = () => {
     }
   };
 
-  const handleExcluir = (id) => {
+  const handleExcluir = async (id) => {
     if (window.confirm('Tem certeza que deseja excluir este agendamento?')) {
+      await consultasService.delete(id);
       setConsultas(consultas.filter(c => c.id !== id));
       setConsultaSelecionada(null);
     }
@@ -60,11 +74,12 @@ const Agenda = () => {
     setIsFormOpen(true);
   };
 
-  const handleSaveConsulta = (consultaSalva) => {
+  const handleSaveConsulta = async (consultaSalva) => {
+    const salvo = await consultasService.save(consultaSalva);
     if (consultaEmEdicao) {
-      setConsultas(consultas.map(c => c.id === consultaSalva.id ? consultaSalva : c));
+      setConsultas(consultas.map(c => c.id === consultaSalva.id ? salvo : c));
     } else {
-      setConsultas([consultaSalva, ...consultas]);
+      setConsultas([salvo, ...consultas]);
     }
     setConsultaEmEdicao(null);
     setIsFormOpen(false);
