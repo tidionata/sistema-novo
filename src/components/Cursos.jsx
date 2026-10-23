@@ -331,6 +331,10 @@ const Cursos = () => {
         <TurmaModal 
           curso={cursoSelecionado} 
           onClose={() => setCursoSelecionado(null)} 
+          onUpdateCurso={(cursoAtualizado) => {
+            setCursos(cursos.map(c => c.id === cursoAtualizado.id ? cursoAtualizado : c));
+            setCursoSelecionado(cursoAtualizado);
+          }}
         />
       )}
 
