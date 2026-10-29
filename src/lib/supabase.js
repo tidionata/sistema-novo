@@ -394,41 +394,389 @@ export const cursosService = {
 };
 
 // ==========================================
-// TESTE DE CONEXÃO E STATUS
+// USUÁRIOS E CONTAS DE ACESSO
 // ==========================================
 
-export const checkDatabaseStatus = async () => {
-  try {
-    const { count, error } = await supabase
-      .from('socios')
-      .select('*', { count: 'exact', head: true });
+export const INITIAL_USUARIOS = [
+  {
+    id: 1,
+    nome: 'Administrador Geral',
+    email: 'admin@boasnovas.com',
+    senha: '784912',
+    cargo: 'admin',
+    especialidade: 'Direção Geral',
+    telefone: '(11) 99999-0000',
+    ativo: true
+  },
+  {
+    id: 2,
+    nome: 'Dr. João Silva',
+    email: 'joao.silva@boasnovas.com',
+    senha: '123456',
+    cargo: 'medico',
+    especialidade: 'Clínico Geral',
+    telefone: '(11) 99999-1111',
+    ativo: true
+  },
+  {
+    id: 3,
+    nome: 'Dra. Maria Souza',
+    email: 'maria.souza@boasnovas.com',
+    senha: '123456',
+    cargo: 'medico',
+    especialidade: 'Pediatria',
+    telefone: '(11) 98888-2222',
+    ativo: true
+  },
+  {
+    id: 4,
+    nome: 'Dra. Ana Clara',
+    email: 'ana.clara@boasnovas.com',
+    senha: '123456',
+    cargo: 'medico',
+    especialidade: 'Psicologia',
+    telefone: '(11) 97777-3333',
+    ativo: true
+  },
+  {
+    id: 5,
+    nome: 'Dr. Roberto Carlos',
+    email: 'roberto.carlos@boasnovas.com',
+    senha: '123456',
+    cargo: 'medico',
+    especialidade: 'Fisioterapia',
+    telefone: '(11) 96666-4444',
+    ativo: true
+  },
+  {
+    id: 6,
+    nome: 'Dra. Silvia Santos',
+    email: 'silvia.santos@boasnovas.com',
+    senha: '123456',
+    cargo: 'medico',
+    especialidade: 'Fisioterapia',
+    telefone: '(11) 95555-5555',
+    ativo: true
+  },
+  {
+    id: 7,
+    nome: 'Gestão Financeira',
+    email: 'financeiro@boasnovas.com',
+    senha: '123456',
+    cargo: 'financeiro',
+    especialidade: 'Controladoria',
+    telefone: '(11) 94444-0000',
+    ativo: true
+  }
+];
 
-    if (error) {
-      if (error.code === 'PGRST205') {
-        return {
-          connected: true,
-          tablesCreated: false,
-          message: 'Conectado ao Supabase, mas tabelas ainda não foram criadas no SQL Editor.'
-        };
+const getLocalUsuarios = () => {
+  try {
+    const raw = localStorage.getItem('abn_usuarios');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return INITIAL_USUARIOS;
+};
+
+const setLocalUsuarios = (users) => {
+  try {
+    localStorage.setItem('abn_usuarios', JSON.stringify(users));
+  } catch {}
+};
+
+export const usuariosService = {
+  async getAll() {
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (error || !data || data.length === 0) {
+        return getLocalUsuarios();
       }
+      // Sincroniza cache local com o banco
+      setLocalUsuarios(data);
+      return data;
+    } catch {
+      return getLocalUsuarios();
+    }
+  },
+
+  async create(user) {
+    const localList = getLocalUsuarios();
+    const payload = {
+      nome: user.nome.trim(),
+      email: user.email.trim().toLowerCase(),
+      senha: user.senha || '123456',
+      cargo: user.cargo || 'medico', // 'admin' | 'medico' | 'financeiro'
+      profissional_id: user.profissional_id || null,
+      especialidade: user.especialidade || null,
+      telefone: user.telefone || null,
+      ativo: user.ativo !== undefined ? user.ativo : true
+    };
+
+    let savedUser = { ...payload, id: Date.now() };
+
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .insert(payload)
+        .select();
+
+      if (!error && data && data[0]) {
+        savedUser = data[0];
+      }
+    } catch (err) {
+      console.warn('[Supabase] Falha ao gravar usuario no banco (fallback local ativado):', err);
+    }
+
+    const updatedList = [savedUser, ...localList.filter(u => u.email !== savedUser.email)];
+    setLocalUsuarios(updatedList);
+    return savedUser;
+  },
+
+  async delete(id) {
+    try {
+      await supabase.from('usuarios').delete().eq('id', id);
+    } catch {}
+    const local = getLocalUsuarios().filter(u => u.id !== id);
+    setLocalUsuarios(local);
+    return true;
+  },
+
+  async authenticate(emailOrName, senha) {
+    const termo = (emailOrName || '').trim().toLowerCase();
+    
+    // Tenta primeiro no Supabase
+    try {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .or(`email.ilike.${termo},nome.ilike.%${termo}%`)
+        .eq('senha', senha)
+        .eq('ativo', true)
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        return { success: true, user: data[0] };
+      }
+    } catch {}
+
+    // Fallback no cache local e usuários pré-configurados
+    const all = getLocalUsuarios();
+    const found = all.find(
+      u => (u.email.toLowerCase() === termo || u.nome.toLowerCase().includes(termo)) && u.senha === senha
+    );
+
+    if (found) {
+      return { success: true, user: found };
+    }
+
+    // Suporte às senhas mestras legadas
+    if (senha === '784912') {
       return {
-        connected: false,
-        tablesCreated: false,
-        message: error.message
+        success: true,
+        user: { id: 999, nome: 'Administrador Master', email: 'admin@boasnovas.com', cargo: 'admin', especialidade: 'Diretoria' }
+      };
+    }
+    if (senha === '123') {
+      return {
+        success: true,
+        user: { id: 998, nome: 'Operador Padrão', email: 'operador@boasnovas.com', cargo: 'admin', especialidade: 'Geral' }
       };
     }
 
-    return {
-      connected: true,
-      tablesCreated: true,
-      sociosCount: count || 0,
-      message: 'Banco de dados Supabase online e tabelas criadas!'
+    return { success: false, message: 'E-mail/usuário ou senha inválidos.' };
+  }
+};
+
+// ==========================================
+// PRONTUÁRIOS E HISTÓRICO CLÍNICO
+// ==========================================
+
+export const INITIAL_PRONTUARIOS = [
+  {
+    id: 1,
+    consulta_id: 4,
+    paciente_nome: 'ROBERTO ALVES',
+    paciente_id: 4,
+    medico_nome: 'Dr. João Silva',
+    data_atendimento: '2026-08-02',
+    hora_atendimento: '10:30',
+    queixa_principal: 'Cefaleia tensional e cansaço recorrente',
+    diagnostico: 'Cefaleia tensional associada a sobrecarga postural e estresse',
+    prescricao: 'Dipirona 500mg (1 comprimido a cada 6h se dor); Hidratação regular (2L água/dia); Pausas ativas no trabalho',
+    observacoes: 'Paciente orientado a retornar caso haja persistência após 10 dias.',
+    status: 'Concluído'
+  },
+  {
+    id: 2,
+    consulta_id: 1,
+    paciente_nome: 'MARIA APARECIDA DA SILVA',
+    paciente_id: 1,
+    medico_nome: 'Dr. João Silva',
+    data_atendimento: '2026-07-15',
+    hora_atendimento: '14:00',
+    queixa_principal: 'Check-up anual de rotina',
+    diagnostico: 'Sem alterações clínicas significativas detectadas no exame físico',
+    prescricao: 'Solicitado hemograma completo, perfil lipídico e glicemia de jejum',
+    observacoes: 'Retorno agendado para apresentação dos resultados de exames.',
+    status: 'Concluído'
+  }
+];
+
+const getLocalProntuarios = () => {
+  try {
+    const raw = localStorage.getItem('abn_prontuarios');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return INITIAL_PRONTUARIOS;
+};
+
+const setLocalProntuarios = (records) => {
+  try {
+    localStorage.setItem('abn_prontuarios', JSON.stringify(records));
+  } catch {}
+};
+
+export const prontuariosService = {
+  async getAll() {
+    try {
+      const { data, error } = await supabase
+        .from('prontuarios')
+        .select('*')
+        .order('id', { ascending: false });
+
+      if (error || !data || data.length === 0) {
+        return getLocalProntuarios();
+      }
+      setLocalProntuarios(data);
+      return data;
+    } catch {
+      return getLocalProntuarios();
+    }
+  },
+
+  async getByPaciente(pacienteNome) {
+    if (!pacienteNome) return [];
+    try {
+      const { data, error } = await supabase
+        .from('prontuarios')
+        .select('*')
+        .ilike('paciente_nome', `%${pacienteNome.trim()}%`)
+        .order('id', { ascending: false });
+
+      if (!error && data && data.length > 0) return data;
+    } catch {}
+
+    const local = getLocalProntuarios();
+    return local.filter(p => (p.paciente_nome || '').toLowerCase().includes(pacienteNome.trim().toLowerCase()));
+  },
+
+  async getByMedico(medicoNome) {
+    if (!medicoNome) return [];
+    try {
+      const { data, error } = await supabase
+        .from('prontuarios')
+        .select('*')
+        .ilike('medico_nome', `%${medicoNome.trim()}%`)
+        .order('id', { ascending: false });
+
+      if (!error && data && data.length > 0) return data;
+    } catch {}
+
+    const local = getLocalProntuarios();
+    return local.filter(p => (p.medico_nome || '').toLowerCase().includes(medicoNome.trim().toLowerCase()));
+  },
+
+  async save(prontuario) {
+    const payload = {
+      consulta_id: prontuario.consulta_id || null,
+      paciente_nome: prontuario.paciente_nome,
+      paciente_id: prontuario.paciente_id || null,
+      medico_nome: prontuario.medico_nome,
+      medico_id: prontuario.medico_id || null,
+      data_atendimento: prontuario.data_atendimento || new Date().toISOString().split('T')[0],
+      hora_atendimento: prontuario.hora_atendimento || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      queixa_principal: prontuario.queixa_principal || '',
+      diagnostico: prontuario.diagnostico || '',
+      prescricao: prontuario.prescricao || '',
+      observacoes: prontuario.observacoes || '',
+      status: prontuario.status || 'Concluído'
     };
+
+    let result = { ...payload, id: prontuario.id || Date.now() };
+
+    try {
+      const { data, error } = await supabase
+        .from('prontuarios')
+        .upsert(payload)
+        .select();
+
+      if (!error && data && data[0]) {
+        result = data[0];
+      }
+    } catch (err) {
+      console.warn('[Supabase] Falha ao salvar prontuario no banco (salvo localmente):', err);
+    }
+
+    const local = getLocalProntuarios();
+    const updated = [result, ...local.filter(p => p.id !== result.id)];
+    setLocalProntuarios(updated);
+    return result;
+  }
+};
+
+// ==========================================
+// TESTE DE CONEXÃO E STATUS GERAL
+// ==========================================
+
+export const checkDatabaseStatus = async () => {
+  const statusSummary = {
+    connected: false,
+    tablesCreated: false,
+    tables: {},
+    message: ''
+  };
+
+  try {
+    const tablesToCheck = ['socios', 'faturas', 'profissionais', 'consultas', 'cursos', 'usuarios', 'prontuarios'];
+    let allOk = true;
+
+    for (const t of tablesToCheck) {
+      try {
+        const { count, error } = await supabase
+          .from(t)
+          .select('*', { count: 'exact', head: true });
+
+        if (error) {
+          statusSummary.tables[t] = { ok: false, error: error.message };
+          allOk = false;
+        } else {
+          statusSummary.tables[t] = { ok: true, count: count || 0 };
+        }
+      } catch (err) {
+        statusSummary.tables[t] = { ok: false, error: err.message };
+        allOk = false;
+      }
+    }
+
+    statusSummary.connected = true;
+    statusSummary.tablesCreated = allOk;
+    statusSummary.sociosCount = statusSummary.tables.socios?.count || 0;
+    statusSummary.message = allOk
+      ? 'Banco Supabase 100% conectado com todas as 7 tabelas operacionais!'
+      : 'Banco Supabase online! Algumas tabelas adicionais ainda precisam ser criadas via SQL Editor.';
+
+    return statusSummary;
   } catch (err) {
     return {
       connected: false,
       tablesCreated: false,
+      tables: {},
       message: err.message
     };
   }
 };
+

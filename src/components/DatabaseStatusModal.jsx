@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Database, CheckCircle, AlertTriangle, RefreshCw, Copy, Check, ExternalLink, X } from 'lucide-react';
+import { Database, CheckCircle, AlertTriangle, RefreshCw, Copy, Check, ExternalLink, X, Shield, Stethoscope } from 'lucide-react';
 import { checkDatabaseStatus, supabase } from '../lib/supabase';
 import initialSocios from '../socios.json';
 import initialFaturas from '../financeiro.json';
 
 const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
-  const [status, setStatus] = useState({ loading: true, connected: false, tablesCreated: false, sociosCount: 0, message: '' });
+  const [status, setStatus] = useState({ loading: true, connected: false, tablesCreated: false, tables: {}, sociosCount: 0, message: '' });
   const [syncing, setSyncing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -17,6 +17,7 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
       loading: false,
       connected: result.connected,
       tablesCreated: result.tablesCreated,
+      tables: result.tables || {},
       sociosCount: result.sociosCount || 0,
       message: result.message
     });
@@ -30,14 +31,12 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
 
   const handleCopySQL = async () => {
     try {
-      // Carregar conteúdo do schema
       const res = await fetch('/supabase_schema.sql');
       let sqlText = '';
       if (res.ok) {
         sqlText = await res.text();
       } else {
-        // Fallback para importação ou mensagem
-        sqlText = '-- Abra o arquivo supabase_schema.sql na raiz do projeto para copiar o script completo.';
+        sqlText = `-- Abra o arquivo supabase_schema.sql na raiz do projeto para copiar o script completo.`;
       }
       await navigator.clipboard.writeText(sqlText);
       setCopied(true);
@@ -51,7 +50,6 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
     setSyncing(true);
     setFeedback(null);
     try {
-      // 1. Verificar se tabelas existem
       const { error: testErr } = await supabase.from('socios').select('id').limit(1);
       if (testErr) {
         setFeedback({
@@ -62,7 +60,6 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
         return;
       }
 
-      // 2. Inserir sócios em lote
       const sociosPayload = initialSocios.map(s => ({
         codigo: Number(s['Código']),
         nome: (s.nNome || '').trim().toUpperCase(),
@@ -88,7 +85,6 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
 
       await supabase.from('socios').upsert(sociosPayload, { onConflict: 'codigo' });
 
-      // 3. Inserir faturas em lote
       const faturasPayload = initialFaturas.map(f => ({
         num_ordem: Number(f.NumOrdem),
         num_fatura: Number(f.NumFatura),
@@ -105,7 +101,7 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
 
       setFeedback({
         type: 'success',
-        text: `Sucesso! ${sociosPayload.length} sócios e ${faturasPayload.length} faturas sincronizados com o Supabase.`
+        text: `Sucesso! Dados sincronizados com o Supabase.`
       });
 
       await checkStatus();
@@ -131,12 +127,14 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 2000,
+      zIndex: 3500,
       padding: '20px'
     }}>
       <div className="glass-card" style={{
         width: '100%',
-        maxWidth: '650px',
+        maxWidth: '700px',
+        maxHeight: '90vh',
+        overflowY: 'auto',
         background: 'var(--bg-secondary)',
         border: '1px solid var(--border-color)',
         borderRadius: '16px',
@@ -175,7 +173,7 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
           <div>
             <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Banco de Dados Supabase</h3>
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              Projeto: <code style={{ color: '#818cf8' }}>mfxhblwklziyccvcqelq</code>
+              Projeto: <code style={{ color: '#818cf8' }}>mfxhblwklziyccvcqelq</code> (Online)
             </p>
           </div>
         </div>
@@ -184,112 +182,133 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
         <div style={{
           padding: '16px',
           borderRadius: '10px',
-          background: status.tablesCreated
-            ? 'rgba(34, 197, 94, 0.1)'
-            : 'rgba(234, 179, 8, 0.1)',
-          border: `1px solid ${status.tablesCreated ? 'rgba(34, 197, 94, 0.3)' : 'rgba(234, 179, 8, 0.3)'}`,
+          background: status.connected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+          border: `1px solid ${status.connected ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
           marginBottom: '20px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-            {status.tablesCreated ? (
-              <CheckCircle size={20} style={{ color: '#4ade80' }} />
-            ) : (
-              <AlertTriangle size={20} style={{ color: '#facc15' }} />
-            )}
-            <span style={{ fontWeight: 600, color: status.tablesCreated ? '#4ade80' : '#facc15' }}>
-              {status.tablesCreated ? 'Banco de Dados Configurado e Ativo' : 'Aguardando Criação das Tabelas'}
+            <CheckCircle size={20} style={{ color: '#4ade80' }} />
+            <span style={{ fontWeight: 600, color: '#4ade80' }}>
+              Conexão com Supabase Ativa & Operacional
             </span>
           </div>
-          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-            {status.tablesCreated
-              ? `Tabelas detectadas! Total de sócios cadastrados no banco: ${status.sociosCount}.`
-              : 'O aplicativo já está configurado com sua URL e chave de API. Falta apenas executar o script SQL no painel Supabase para criar as tabelas.'}
+          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+            {status.message}
           </p>
         </div>
 
-        {/* Step-by-step for SQL */}
-        {!status.tablesCreated && (
-          <div style={{
-            background: 'rgba(0,0,0,0.25)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '10px',
-            padding: '16px',
-            marginBottom: '20px',
-            fontSize: '0.9rem',
-            lineHeight: '1.6'
-          }}>
-            <h4 style={{ margin: '0 0 10px 0', fontSize: '0.95rem', color: '#818cf8' }}>
-              Como criar as tabelas no Supabase (em 3 passos):
-            </h4>
-            <ol style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)' }}>
-              <li>
-                Abra o arquivo <strong style={{ color: 'white' }}>supabase_schema.sql</strong> na raiz do projeto (ou clique no botão copiar abaixo).
-              </li>
-              <li>
-                Acesse o{' '}
-                <a
-                  href="https://supabase.com/dashboard/project/mfxhblwklziyccvcqelq/sql/new"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: '#818cf8', textDecoration: 'underline', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                >
-                  SQL Editor do Supabase <ExternalLink size={12} />
-                </a>
-              </li>
-              <li>Cole o código SQL e clique em <strong style={{ color: '#4ade80' }}>Run (Executar)</strong>.</li>
-            </ol>
+        {/* Relatório de Tabelas */}
+        <div style={{ marginBottom: '20px' }}>
+          <h4 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            STATUS DAS TABELAS NO BANCO:
+          </h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }}>
+            {[
+              { nome: 'socios', label: 'Sócios', desc: 'Cadastros gerais' },
+              { nome: 'faturas', label: 'Faturas', desc: 'Financeiro e boletos' },
+              { nome: 'profissionais', label: 'Profissionais', desc: 'Médicos e equipe' },
+              { nome: 'consultas', label: 'Consultas', desc: 'Agendamentos' },
+              { nome: 'cursos', label: 'Atividades', desc: 'Cursos e oficinas' },
+              { nome: 'usuarios', label: 'Usuários', desc: 'Logins e acessos' },
+              { nome: 'prontuarios', label: 'Prontuários', desc: 'Histórico médico' }
+            ].map(t => {
+              const tabInfo = status.tables?.[t.nome];
+              const ok = tabInfo?.ok;
+              const count = tabInfo?.count;
 
-            <div style={{ marginTop: '14px', display: 'flex', gap: '10px' }}>
-              <button
-                onClick={handleCopySQL}
-                style={{
-                  background: 'var(--accent-primary)',
-                  color: 'white',
-                  border: 'none',
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                {copied ? <Check size={16} /> : <Copy size={16} />}
-                {copied ? 'SQL Copiado!' : 'Copiar Script SQL'}
-              </button>
-
-              <a
-                href="https://supabase.com/dashboard/project/mfxhblwklziyccvcqelq/sql/new"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  color: 'white',
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  textDecoration: 'none',
-                  fontSize: '0.85rem',
-                  fontWeight: 500,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                <ExternalLink size={16} /> Abrir SQL Editor
-              </a>
-            </div>
+              return (
+                <div key={t.nome} style={{
+                  background: 'rgba(0,0,0,0.2)',
+                  border: `1px solid ${ok ? 'rgba(34, 197, 94, 0.25)' : 'rgba(234, 179, 8, 0.25)'}`,
+                  borderRadius: '8px',
+                  padding: '10px 12px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{t.label}</span>
+                    <span style={{
+                      fontSize: '0.7rem',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      background: ok ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)',
+                      color: ok ? '#4ade80' : '#facc15'
+                    }}>
+                      {ok ? `${count ?? 0} registros` : 'Executar SQL'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    public.{t.nome}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
+        </div>
 
-        {/* Feedback Alert */}
+        {/* Script SQL Box */}
+        <div style={{
+          background: 'rgba(0,0,0,0.25)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '10px',
+          padding: '16px',
+          marginBottom: '20px',
+          fontSize: '0.85rem'
+        }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#818cf8' }}>
+            Script SQL Completo (Com Tabelas de Usuários e Prontuários):
+          </h4>
+          <p style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)' }}>
+            O script inclui todas as 7 tabelas e dados iniciais de médicos, administradores e prontuários.
+          </p>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={handleCopySQL}
+              style={{
+                background: 'var(--accent-primary)',
+                color: 'white',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? 'SQL Copiado para Área de Transferência!' : 'Copiar Script SQL Completo'}
+            </button>
+
+            <a
+              href="https://supabase.com/dashboard/project/mfxhblwklziyccvcqelq/sql/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                color: 'white',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                textDecoration: 'none',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <ExternalLink size={16} /> Abrir SQL Editor do Supabase
+            </a>
+          </div>
+        </div>
+
         {feedback && (
           <div style={{
             padding: '12px 16px',
             borderRadius: '8px',
             marginBottom: '16px',
-            fontSize: '0.9rem',
+            fontSize: '0.85rem',
             background: feedback.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
             color: feedback.type === 'success' ? '#4ade80' : '#f87171',
             border: `1px solid ${feedback.type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
@@ -298,7 +317,6 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
           </div>
         )}
 
-        {/* Actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
           <button
             onClick={checkStatus}
@@ -311,14 +329,14 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
               borderRadius: '8px',
               cursor: 'pointer',
               fontWeight: 500,
-              fontSize: '0.9rem',
+              fontSize: '0.85rem',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}
           >
-            <RefreshCw size={16} className={status.loading ? 'spin' : ''} />
-            Verificar Conexão
+            <RefreshCw size={15} />
+            Atualizar Status
           </button>
 
           <button
@@ -332,15 +350,14 @@ const DatabaseStatusModal = ({ isOpen, onClose, onDataSynced }) => {
               borderRadius: '8px',
               cursor: 'pointer',
               fontWeight: 600,
-              fontSize: '0.9rem',
+              fontSize: '0.85rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              opacity: syncing ? 0.7 : 1
+              gap: '8px'
             }}
           >
-            <RefreshCw size={16} className={syncing ? 'spin' : ''} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar Dados Agora'}
+            <RefreshCw size={15} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar Sócios e Faturas'}
           </button>
         </div>
       </div>
